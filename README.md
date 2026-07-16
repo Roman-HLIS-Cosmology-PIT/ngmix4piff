@@ -55,4 +55,4 @@ At the moment the availalble fitters are:
 
 - `wmom`: weighted moment for which one can set the size of the window function
 - `am`: adaptive moments
-- `gauss`: mixture of gaussian fitting. By default the fitter will use LMSimple minimization. Thought for `ngauss > 1` it is recommended to set `em; true` to use the EMFitter instead.
+- `gauss`: mixture of gaussian fitting. By default the fitter will use LMSimple minimization. Thought for `ngauss > 1` it is recommended to set `em: true` to use the EMFitter instead.

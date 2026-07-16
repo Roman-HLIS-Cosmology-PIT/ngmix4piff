@@ -73,7 +73,7 @@ select = [
     # flake8-simplify
     "SIM",
     # isort
-    "I",
+    # "I",
     # docstrings
     "D101",
     "D102",
@@ -96,6 +96,10 @@ ignore = [
     "SIM117", # Allow nested with
     "UP015", # Allow redundant open parameters
     "UP028", # Allow yield in for loop
+    "I", # Ignore isort errors
+    "N802", # Allow function names that are not lowercase
+    "N806", # Allow variable names that are not lowercase
+    "N803", # Allow argument names that are not lowercase
 ]
 
 

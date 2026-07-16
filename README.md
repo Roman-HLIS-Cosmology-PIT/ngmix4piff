@@ -60,3 +60,6 @@ At the moment the availalble fitters are:
 ## Examples
 
 The example directory is taken from `Piff` with the updated config file to include the new `NgmixCatalog` stat.
+
+## AI disclosure
+Docstrings have been generated with GPT-5.3-Codex and reviewed by human.

@@ -1,7 +1,7 @@
 import numpy as np
 
 import ngmix
-from ngmix.runners import PSFRunner, run_psf_fitter
+from ngmix.runners import PSFRunner
 from ngmix.guessers import GMixPSFGuesser, CoellipPSFGuesser
 
 from .hom import AdmomFitterHOM, FitterHOM

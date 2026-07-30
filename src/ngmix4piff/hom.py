@@ -87,7 +87,7 @@ class AdmomFitterHOM(AdmomFitter):
             gaussian are generated.
         """
         result = super().go(obs=obs, guess=guess)
-        if self.with_higher_order:
+        if self.with_higher_order and result["flags"] == 0:
             gmix = result.get_gmix()
             hom_results = gmix.get_weighted_moments(
                 obs=obs,
@@ -145,7 +145,7 @@ class FitterHOM(Fitter):
         """
 
         result = super().go(obs=obs, guess=guess)
-        if self.with_higher_order:
+        if self.with_higher_order and result["flags"] == 0:
             gmix = result.get_gmix()
             hom_results = gmix.get_weighted_moments(
                 obs=obs,

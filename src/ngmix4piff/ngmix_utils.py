@@ -195,7 +195,10 @@ def setup_gauss_runner(fitter_config, do_hom=False, seed=None):
         fitter = ngmix.em.EMFitter()
         guesser = GMixPSFGuesser(rng=rng, ngauss=ngauss, guess_from_moms=True)
         runner = EMRunner(
-            fitter=fitter, guesser=guesser, ntry=fitter_config.get("ntry", 1)
+            fitter=fitter,
+            guesser=guesser,
+            ntry=fitter_config.get("ntry", 1),
+            with_higher_order=do_hom and ngauss == 1,
         )
     runner_name = fitter_config.get("name", f"gauss{ngauss}")
     return runner, runner_name
@@ -205,6 +208,10 @@ class EMRunner(PSFRunner):
     """
     PSF runner variant that adapts EM fitter output fields.
     """
+
+    def __init__(self, *args, with_higher_order=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.with_higher_order = with_higher_order
 
     def go(self, obs):
         """
@@ -222,14 +229,7 @@ class EMRunner(PSFRunner):
             ``flux``, and ``s2n`` values when fitting succeeds.
         """
 
-        res = run_psf_fitter(
-            obs=obs,
-            fitter=self.fitter,
-            guesser=self.guesser,
-            ntry=self.ntry,
-            set_result=self.set_result,
-        )
-
+        res = super().go(obs)
         if res["flags"] == 0:
             gm = res.get_gmix()
             g1, g2, T = gm.get_g1g2T()
@@ -238,7 +238,10 @@ class EMRunner(PSFRunner):
             res["T"] = T
             res["flux"] = flux
             res["s2n"] = gm.get_model_s2n(obs)
-            # res["T_err"] = -10.0
-            # res["flux_err"] = -10.0
-            # res["g_err"] = np.array([-10.0, -10.0])
+            if self.with_higher_order:
+                hom_results = gm.get_weighted_moments(
+                    obs=obs, with_higher_order=self.with_higher_order
+                )
+                hom_results.update(res)
+                res = hom_results
         return res

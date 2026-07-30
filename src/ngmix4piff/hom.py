@@ -1,7 +1,5 @@
-from ngmix import Observation
-from ngmix.admom.admom import AdmomFitter, get_result, AdmomResult
-from ngmix.flags import GMIX_RANGE_ERROR
-from ngmix.gexceptions import GMixRangeError
+from ngmix.admom.admom import AdmomFitter
+from ngmix.fitting import Fitter
 
 
 def parse_hom_momoents(res):
@@ -88,29 +86,65 @@ class AdmomFitterHOM(AdmomFitter):
             value for T, in which case the rest of the parameters for the
             gaussian are generated.
         """
-        from ngmix.admom.admom_nb import admom
-
-        if not isinstance(obs, Observation):
-            raise ValueError("input obs must be an Observation")
-
-        guess_gmix = self._get_guess(obs=obs, guess=guess)
-
-        ares = self._get_am_result()
-
-        wt_gmix = guess_gmix._data
-        try:
-            admom(
-                self.conf,
-                wt_gmix,
-                obs.pixels,
-                ares,
+        result = super().go(obs=obs, guess=guess)
+        if self.with_higher_order:
+            gmix = result.get_gmix()
+            hom_results = gmix.get_weighted_moments(
+                obs=obs,
+                with_higher_order=self.with_higher_order,
             )
-        except GMixRangeError:
-            ares["flags"] = GMIX_RANGE_ERROR
+            hom_results.update(result)
+            result = hom_results
+        return result
 
-        result_ = get_result(ares, obs.jacobian.area, wt_gmix["norm"][0])
-        result = AdmomResult(obs=obs, result=result_)
 
+class FitterHOM(Fitter):
+    """
+    A class for doing a fit using levenberg marquardt.
+    We have added the option to return higher order moments using the derived
+    best fitted gmix.
+
+    Parameters
+    ----------
+    model: str
+        The model to fit
+    prior: ngmix prior
+        A prior for fitting
+    fit_pars: dict
+        Parameters to send to the leastsq fitting routine
+    with_higher_order: bool, optional
+        If set to True, return higher order moments in the sums/sums_cov
+        arrays.  See ngmix.moments.MOMENTS_NAME_MAP for a map between
+        name and index.
+    """
+
+    def __init__(
+        self,
+        with_higher_order=False,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.with_higher_order = with_higher_order
+
+    def go(self, obs, guess):
+        """
+        Run leastsq and set the result
+
+        Parameters
+        ----------
+        obs: Observation, ObsList, or MultiBandObsList
+            Observation(s) to fit
+        guess: array
+            Array of initial parameters for the fit
+
+        Returns
+        --------
+        a dict-like which contains the result as well as functions used for the
+        fitting.
+
+        """
+
+        result = super().go(obs=obs, guess=guess)
         if self.with_higher_order:
             gmix = result.get_gmix()
             hom_results = gmix.get_weighted_moments(

@@ -10,7 +10,7 @@ from .ngmix_utils import make_observations, get_runners
 from .hom import parse_hom_momoents
 from . import __version__ as ngmix4piff_version
 
-VALID_HOM_RUNNERS = ["am", "wmom"]
+VALID_HOM_RUNNERS = ["am", "wmom", "gauss1"]
 
 
 def get_runner_output_dtype(runner_name, kinds, do_hom=False):

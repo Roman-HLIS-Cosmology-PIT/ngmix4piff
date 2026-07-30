@@ -4,7 +4,7 @@ import ngmix
 from ngmix.runners import PSFRunner, run_psf_fitter
 from ngmix.guessers import GMixPSFGuesser, CoellipPSFGuesser
 
-from .hom import AdmomFitterHOM
+from .hom import AdmomFitterHOM, FitterHOM
 
 
 def make_observations(image, weight, image_pos, logger=None):
@@ -77,7 +77,9 @@ def get_runners(fitters, seed=None, do_hom=False):
                 fitter_config, seed=seed, do_hom=do_hom
             )
         elif fitter_config["model"] == "gauss":
-            runner, runner_name = setup_gauss_runner(fitter_config, seed=seed)
+            runner, runner_name = setup_gauss_runner(
+                fitter_config, do_hom=do_hom, seed=seed
+            )
         else:
             raise NotImplementedError(
                 f"Fitter model {fitter_config['model']} not implemented"
@@ -149,7 +151,7 @@ def setup_am_runner(fitter_config, do_hom=False, seed=None):
     return runner, runner_name
 
 
-def setup_gauss_runner(fitter_config, seed=None):
+def setup_gauss_runner(fitter_config, do_hom=False, seed=None):
     """
     Configure a Gaussian or coelliptical Gaussian runner.
 
@@ -157,6 +159,8 @@ def setup_gauss_runner(fitter_config, seed=None):
     ------------
     fitter_config: dict
         Configuration dictionary for the ``gauss`` model.
+    do_hom: bool
+        Whether to include higher-order moment columns in the output.
     seed: int | None
         Optional seed used when not specified in ``fitter_config``.
 
@@ -176,7 +180,7 @@ def setup_gauss_runner(fitter_config, seed=None):
     use_em = fitter_config.get("em", False)
     if not use_em:
         if ngauss == 1:
-            fitter = ngmix.fitting.Fitter(model="gauss")
+            fitter = FitterHOM(model="gauss", with_higher_order=do_hom)
         elif ngauss > 1:
             fitter = ngmix.fitting.CoellipFitter(ngauss=ngauss)
         else:

@@ -29,6 +29,7 @@ output:
             type: NgmixCatalog
             file_name: "ngmix_cat.fits"
             seed: 42
+            do_hom: true
             fitters:
                 - 
                     model: gauss

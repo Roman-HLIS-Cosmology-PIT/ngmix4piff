@@ -185,11 +185,13 @@ output:
             # the PSF models.  Reserve stars are marked as such in a reserve column.
             type: HSMCatalog
             file_name: "D00350139_cat.fits"
+            fourth_order: true
 
         -
             type: NgmixCatalog
             file_name: "ngmix_cat.fits"
             seed: 42
+            do_hom: true
             fitters:
                 - 
                     model: gauss
@@ -204,7 +206,7 @@ output:
                 - 
                     model: wmom
                     weight:
-                        fwhm: 0.5
+                        fwhm: 1.2
                 - 
                     model: am
                     ntry: 3

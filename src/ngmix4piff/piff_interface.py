@@ -7,10 +7,13 @@ from ngmix.shape import e1e2_to_g1g2
 import fitsio
 
 from .ngmix_utils import make_observations, get_runners
+from .hom import parse_hom_momoents
 from . import __version__ as ngmix4piff_version
 
+VALID_HOM_RUNNERS = ["am", "wmom"]
 
-def get_runner_output_dtype(runner_name, kinds):
+
+def get_runner_output_dtype(runner_name, kinds, do_hom=False):
     """
     Build output dtypes for a single runner.
 
@@ -21,6 +24,8 @@ def get_runner_output_dtype(runner_name, kinds):
         names.
     kinds: list[str]
         Measurement kinds to include (for example, ``data`` and ``model``).
+    do_hom: bool
+        Whether to include higher-order moment columns in the output.
 
     Returns
     --------
@@ -43,10 +48,19 @@ def get_runner_output_dtype(runner_name, kinds):
             # (f"{runner_name}_flux_err_{kind}", np.float64),
             # (f"{runner_name}_chisq_{kind}", np.float64),
         ]
+    if do_hom:
+        for kind in kinds:
+            dtypes += [
+                (f"{runner_name}_g41_{kind}", np.float64),
+                (f"{runner_name}_g42_{kind}", np.float64),
+                (f"{runner_name}_T4_{kind}", np.float64),
+                (f"{runner_name}_h41_{kind}", np.float64),
+                (f"{runner_name}_h42_{kind}", np.float64),
+            ]
     return dtypes
 
 
-def get_output_empty(nobj, runner_names, kinds):
+def get_output_empty(nobj, runner_names, kinds, do_hom=False):
     """
     Allocate an empty structured output catalog.
 
@@ -58,6 +72,8 @@ def get_output_empty(nobj, runner_names, kinds):
         Runner names to include in the catalog schema.
     kinds: list[str]
         Measurement kinds to include (for example, ``data`` and ``model``).
+    do_hom: bool
+        Whether to include higher-order moment columns in the output.
 
     Returns
     --------
@@ -77,7 +93,7 @@ def get_output_empty(nobj, runner_names, kinds):
         ("chipnum", np.float64),
     ]
     for runner_name in runner_names:
-        dtypes += get_runner_output_dtype(runner_name, kinds)
+        dtypes += get_runner_output_dtype(runner_name, kinds, do_hom=do_hom)
 
     output_cat = np.zeros(nobj, dtype=dtypes)
     return output_cat
@@ -108,6 +124,7 @@ class NgmixCatalog(Stats):
         self,
         fitters=None,
         seed=None,
+        do_hom=False,
         file_name=None,
         model_properties=None,
         logger=None,
@@ -116,7 +133,9 @@ class NgmixCatalog(Stats):
         self.file_name = file_name
         self.model_properties = model_properties
 
-        self.runners = get_runners(fitters, seed=seed)
+        self.runners, self._do_hom = get_runners(
+            fitters, seed=seed, do_hom=do_hom
+        )
 
     def compute(self, psf, stars, logger=None):
         """Measure configured ngmix moments on data and optional model stars.
@@ -142,7 +161,9 @@ class NgmixCatalog(Stats):
             kinds.append("model")
 
         n_stars = len(stars)
-        self.output_cat = get_output_empty(n_stars, self.runners.keys(), kinds)
+        self.output_cat = get_output_empty(
+            n_stars, self.runners.keys(), kinds, do_hom=self._do_hom
+        )
 
         for i in range(n_stars):
             star = stars[i]
@@ -242,6 +263,13 @@ class NgmixCatalog(Stats):
         self.output_cat[f"{runner_name}_T_{kind}"][i] = res_["T"]
         self.output_cat[f"{runner_name}_flux_{kind}"][i] = res_["flux"]
         self.output_cat[f"{runner_name}_snr_{kind}"][i] = res_["s2n"]
+        if self._do_hom and runner_name in VALID_HOM_RUNNERS:
+            hom_res = parse_hom_momoents(res_)
+            self.output_cat[f"{runner_name}_g41_{kind}"][i] = hom_res["g41"]
+            self.output_cat[f"{runner_name}_g42_{kind}"][i] = hom_res["g42"]
+            self.output_cat[f"{runner_name}_T4_{kind}"][i] = hom_res["T4"]
+            self.output_cat[f"{runner_name}_h41_{kind}"][i] = hom_res["h41"]
+            self.output_cat[f"{runner_name}_h42_{kind}"][i] = hom_res["h42"]
 
     def write(self, file_name=None, logger=None):
         """

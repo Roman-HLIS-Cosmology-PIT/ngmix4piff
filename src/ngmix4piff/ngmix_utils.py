@@ -4,6 +4,8 @@ import ngmix
 from ngmix.runners import PSFRunner, run_psf_fitter
 from ngmix.guessers import GMixPSFGuesser, CoellipPSFGuesser
 
+from .hom import AdmomFitterHOM
+
 
 def make_observations(image, weight, image_pos, logger=None):
     """
@@ -42,7 +44,7 @@ def make_observations(image, weight, image_pos, logger=None):
     return obs
 
 
-def get_runners(fitters, seed=None):
+def get_runners(fitters, seed=None, do_hom=False):
     """
     Build a mapping of configured fitter runners.
 
@@ -52,6 +54,8 @@ def get_runners(fitters, seed=None):
         List of fitter configuration dictionaries.
     seed: int | None
         Optional default seed used by fitters that require randomness.
+    do_hom: bool
+        Whether to include higher-order moment columns in the output.
 
     Returns
     --------
@@ -65,9 +69,13 @@ def get_runners(fitters, seed=None):
         if not isinstance(fitter_config, dict):
             raise ValueError("fitter_config must be a dict")
         if fitter_config["model"] == "wmom":
-            runner, runner_name = setup_wmom_runner(fitter_config)
+            runner, runner_name = setup_wmom_runner(
+                fitter_config, do_hom=do_hom
+            )
         elif fitter_config["model"] == "am":
-            runner, runner_name = setup_am_runner(fitter_config, seed=seed)
+            runner, runner_name = setup_am_runner(
+                fitter_config, seed=seed, do_hom=do_hom
+            )
         elif fitter_config["model"] == "gauss":
             runner, runner_name = setup_gauss_runner(fitter_config, seed=seed)
         else:
@@ -75,10 +83,10 @@ def get_runners(fitters, seed=None):
                 f"Fitter model {fitter_config['model']} not implemented"
             )
         runners[runner_name] = runner
-    return runners
+    return runners, do_hom
 
 
-def setup_wmom_runner(fitter_config):
+def setup_wmom_runner(fitter_config, do_hom=False):
     """
     Configure a weighted-moments runner.
 
@@ -86,19 +94,23 @@ def setup_wmom_runner(fitter_config):
     ------------
     fitter_config: dict
         Configuration dictionary for the ``wmom`` model.
+    do_hom: bool
+        Whether to include higher-order moment columns in the output.
 
     Returns
     --------
     tuple[PSFRunner, str]
         Configured runner and its output name.
     """
-    fitter = ngmix.gaussmom.GaussMom(fwhm=fitter_config["weight"]["fwhm"])
+    fitter = ngmix.gaussmom.GaussMom(
+        fwhm=fitter_config["weight"]["fwhm"], with_higher_order=do_hom
+    )
     runner = PSFRunner(fitter, ntry=1)
     runner_name = fitter_config.get("name", "wmom")
     return runner, runner_name
 
 
-def setup_am_runner(fitter_config, seed=None):
+def setup_am_runner(fitter_config, do_hom=False, seed=None):
     """
     Configure an adaptive-moments runner.
 
@@ -106,6 +118,8 @@ def setup_am_runner(fitter_config, seed=None):
     ------------
     fitter_config: dict
         Configuration dictionary for the ``am`` model.
+    do_hom: bool
+        Whether to include higher-order moment columns in the output.
     seed: int | None
         Optional seed used when not specified in ``fitter_config``.
 
@@ -121,14 +135,13 @@ def setup_am_runner(fitter_config, seed=None):
             "seed must be provided for am fitter either NgmixCatalog level or "
             "the fitter level"
         )
-    print(f"Setting up am runner with seed {seed}")
     rng = np.random.RandomState(seed)
     guesser = GMixPSFGuesser(
         rng=rng,
         ngauss=1,
         guess_from_moms=True,
     )
-    fitter = ngmix.admom.AdmomFitter(rng=rng)
+    fitter = AdmomFitterHOM(rng=rng, with_higher_order=do_hom)
     runner = PSFRunner(
         fitter=fitter, guesser=guesser, ntry=fitter_config.get("ntry", 1)
     )
@@ -158,7 +171,6 @@ def setup_gauss_runner(fitter_config, seed=None):
             "seed must be provided for gauss fitter either NgmixCatalog level "
             "or the fitter level"
         )
-    print(f"Setting up gauss runner with seed {seed}")
     rng = np.random.RandomState(seed)
     ngauss = fitter_config.get("ngauss", 1)
     use_em = fitter_config.get("em", False)

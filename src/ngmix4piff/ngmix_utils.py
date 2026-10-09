@@ -3,8 +3,9 @@ import numpy as np
 import ngmix
 from ngmix.runners import PSFRunner
 from ngmix.guessers import GMixPSFGuesser, CoellipPSFGuesser
+from ngmix.gexceptions import GMixRangeError
 
-from .hom import AdmomFitterHOM, FitterHOM
+from .hom import AdmomFitterHOM, FitterHOM, add_hom_results
 
 
 def make_observations(image, weight, image_pos, logger=None):
@@ -231,17 +232,16 @@ class EMRunner(PSFRunner):
 
         res = super().go(obs)
         if res["flags"] == 0:
-            gm = res.get_gmix()
-            g1, g2, T = gm.get_g1g2T()
+            try:
+                gm = res.get_gmix()
+                g1, g2, T = gm.get_g1g2T()
+            except GMixRangeError:
+                res["flags"] |= ngmix.flags.GMIX_RANGE_ERROR
+                return res
             flux = gm.get_flux()
             res["g"] = np.array([g1, g2])
             res["T"] = T
             res["flux"] = flux
             res["s2n"] = gm.get_model_s2n(obs)
-            if self.with_higher_order:
-                hom_results = gm.get_weighted_moments(
-                    obs=obs, with_higher_order=self.with_higher_order
-                )
-                hom_results.update(res)
-                res = hom_results
+            res = add_hom_results(res, obs, self.with_higher_order)
         return res

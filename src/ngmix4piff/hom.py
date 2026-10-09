@@ -52,7 +52,8 @@ def add_hom_results(result, obs, with_higher_order):
     obs: Observation
         ngmix.Observation that was fit.
     with_higher_order: bool
-        If set to True, add the higher order moments to the result.
+        If set to True, add the higher order moments to the result, with
+        their own flags stored in ``hom_flags``.
 
     Returns
     -------
@@ -69,11 +70,18 @@ def add_hom_results(result, obs, with_higher_order):
     if not with_higher_order:
         return result
 
-    hom_results = gmix.get_weighted_moments(
-        obs=obs,
-        with_higher_order=with_higher_order,
-    )
+    try:
+        hom_results = gmix.get_weighted_moments(
+            obs=obs,
+            with_higher_order=with_higher_order,
+        )
+    except GMixRangeError:
+        result["hom_flags"] = ngmix.flags.GMIX_RANGE_ERROR
+        return result
+    # Keep the moments flags before the fit result overwrites them.
+    hom_flags = hom_results["flags"]
     hom_results.update(result)
+    hom_results["hom_flags"] = hom_flags
     return hom_results
 
 

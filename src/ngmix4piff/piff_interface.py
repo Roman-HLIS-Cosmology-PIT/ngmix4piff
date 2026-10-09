@@ -53,6 +53,7 @@ def get_runner_output_dtype(runner_name, kinds, do_hom=False):
     if do_hom:
         for kind in kinds:
             dtypes += [
+                (f"{runner_name}_hom_flags_{kind}", np.int32),
                 (f"{runner_name}_g41_{kind}", np.float64),
                 (f"{runner_name}_g42_{kind}", np.float64),
                 (f"{runner_name}_T4_{kind}", np.float64),
@@ -290,6 +291,8 @@ class NgmixCatalog(Stats):
         """
         if res_["flags"] != 0:
             self.output_cat[f"{runner_name}_flags_{kind}"][i] = res_["flags"]
+            if self._do_hom:
+                self.output_cat[f"{runner_name}_hom_flags_{kind}"][i] = res_["flags"]
             return
         if runner_name in ["wmom", "am"]:
             g1, g2 = e1e2_to_g1g2(res_["e1"], res_["e2"])
@@ -300,7 +303,15 @@ class NgmixCatalog(Stats):
         self.output_cat[f"{runner_name}_T_{kind}"][i] = res_["T"]
         self.output_cat[f"{runner_name}_flux_{kind}"][i] = res_["flux"]
         self.output_cat[f"{runner_name}_snr_{kind}"][i] = res_["s2n"]
-        if self._do_hom and runner_name in VALID_HOM_RUNNERS:
+        if not self._do_hom:
+            return
+        if runner_name not in VALID_HOM_RUNNERS:
+            self.output_cat[f"{runner_name}_hom_flags_{kind}"][i] = ngmix.flags.NO_ATTEMPT
+            return
+        # wmom measures the moments in the main fit, so it has no hom_flags.
+        hom_flags = res_.get("hom_flags", 0)
+        self.output_cat[f"{runner_name}_hom_flags_{kind}"][i] = hom_flags
+        if hom_flags == 0:
             hom_res = parse_hom_momoents(res_)
             self.output_cat[f"{runner_name}_g41_{kind}"][i] = hom_res["g41"]
             self.output_cat[f"{runner_name}_g42_{kind}"][i] = hom_res["g42"]

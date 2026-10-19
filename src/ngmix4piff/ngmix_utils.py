@@ -243,5 +243,6 @@ class EMRunner(PSFRunner):
             res["T"] = T
             res["flux"] = flux
             res["s2n"] = gm.get_model_s2n(obs)
-            res = add_hom_results(res, obs, self.with_higher_order)
+            if self.with_higher_order:
+                res = add_hom_results(res, gm, obs)
         return res

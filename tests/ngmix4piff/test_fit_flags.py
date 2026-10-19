@@ -50,24 +50,28 @@ def _patch_admom(monkeypatch, bad_star=None, ncalls=None):
     monkeypatch.setattr(AdmomFitter, "go", go)
 
 
-def test_admom_hom_flags(monkeypatch):
+@pytest.mark.parametrize("do_hom", [True, False])
+def test_admom_hom_flags(monkeypatch, do_hom):
     """A fit that converges to |e| = 1 is flagged instead of raising."""
     image = _make_image(FLUXES[0])
     weight = galsim.ImageD(STAMP_SIZE, STAMP_SIZE, init_value=1.0, scale=SCALE)
     obs = make_observations(image, weight, image.true_center)
 
     _patch_admom(monkeypatch, ncalls=1)
-    fitter = AdmomFitterHOM(with_higher_order=True, rng=np.random.RandomState(1))
+    fitter = AdmomFitterHOM(with_higher_order=do_hom, rng=np.random.RandomState(1))
     res = fitter.go(obs, guess=0.1)
     assert res["flags"] & GMIX_RANGE_ERROR
 
     # Only the first try fails, so a runner with retries recovers.
     _patch_admom(monkeypatch, ncalls=1)
-    runner, _ = setup_am_runner({"model": "am", "ntry": 3}, do_hom=True, seed=1)
+    runner, _ = setup_am_runner({"model": "am", "ntry": 3}, do_hom=do_hom, seed=1)
     res = runner.go(obs)
     assert res["flags"] == 0
-    assert res["hom_flags"] == 0
-    assert np.isfinite(res["M22"])
+    if do_hom:
+        assert res["hom_flags"] == 0
+        assert np.isfinite(res["M22"])
+    else:
+        assert "hom_flags" not in res
 
 
 @pytest.mark.parametrize("do_hom", [True, False])

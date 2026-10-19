@@ -63,4 +63,6 @@ At the moment the availalble fitters are:
 The example directory is taken from `Piff` with the updated config file to include the new `NgmixCatalog` stat.
 
 ## AI disclosure
+Some contributions to this package were developed with the assistance of AI coding tools and reviewed by a human. Where applicable, the tools used are noted in the commit history (e.g., via `Co-Authored-By` attributions).
+
 Docstrings have been generated with GPT-5.3-Codex and reviewed by human.

@@ -3,6 +3,8 @@ import galsim
 from piff.stats import Stats
 from piff.config import LoggerWrapper
 from piff import __version__ as piff_version
+import ngmix
+from ngmix.gexceptions import GMixRangeError
 from ngmix.shape import e1e2_to_g1g2
 import fitsio
 
@@ -51,6 +53,7 @@ def get_runner_output_dtype(runner_name, kinds, do_hom=False):
     if do_hom:
         for kind in kinds:
             dtypes += [
+                (f"{runner_name}_hom_flags_{kind}", np.int32),
                 (f"{runner_name}_g41_{kind}", np.float64),
                 (f"{runner_name}_g42_{kind}", np.float64),
                 (f"{runner_name}_T4_{kind}", np.float64),
@@ -78,8 +81,9 @@ def get_output_empty(nobj, runner_names, kinds, do_hom=False):
     Returns
     --------
     numpy.ndarray
-        Zero-initialized structured array with base metadata and per-runner
-        measurement columns.
+        Structured array with base metadata and per-runner measurement
+        columns. Flag and base columns are zero-initialized; measurement
+        columns are NaN until a successful measurement is stored.
     """
     dtypes = [
         ("u", np.float64),
@@ -96,6 +100,10 @@ def get_output_empty(nobj, runner_names, kinds, do_hom=False):
         dtypes += get_runner_output_dtype(runner_name, kinds, do_hom=do_hom)
 
     output_cat = np.zeros(nobj, dtype=dtypes)
+    for runner_name in runner_names:
+        for name, dtype in get_runner_output_dtype(runner_name, kinds, do_hom=do_hom):
+            if dtype is np.float64:
+                output_cat[name] = np.nan
     return output_cat
 
 
@@ -173,8 +181,7 @@ class NgmixCatalog(Stats):
                 image, weight, image_pos, logger=logger
             )
             for runner_name, runner in self.runners.items():
-                res_ = runner.go(data_obs)
-                self._add_result(i, res_, runner_name, kind="data")
+                self._measure(i, data_obs, runner, runner_name, kind="data")
 
         if psf is not None:
             logger.debug("Generating and Measuring Model Stars")
@@ -192,8 +199,7 @@ class NgmixCatalog(Stats):
                     image, weight, image_pos, logger=logger
                 )
                 for runner_name, runner in self.runners.items():
-                    res_ = runner.go(model_obs)
-                    self._add_result(i, res_, runner_name, kind="model")
+                    self._measure(i, model_obs, runner, runner_name, kind="model")
 
         # Build the columns for the output catalog
         if isinstance(stars[0].image.wcs, galsim.wcs.CelestialWCS):
@@ -236,6 +242,38 @@ class NgmixCatalog(Stats):
             [s.chipnum for s in stars], dtype=self.output_cat["chipnum"].dtype
         )  # chipnum
 
+    def _measure(self, i, obs, runner, runner_name, kind="data"):
+        """
+        Run one runner on an observation and store the result.
+
+        ngmix can raise ``GMixRangeError`` for fits that converged to an
+        out-of-range shape (for example |e| >= 1). Such measurements are
+        flagged with ``ngmix.flags.GMIX_RANGE_ERROR`` and left as NaN, so the
+        rest of the catalog is still computed.
+
+        Parameters
+        ------------
+        i: int
+            Index of the star row to update.
+        obs: ngmix.Observation
+            Observation to measure.
+        runner: PSFRunner
+            Runner used for the measurement.
+        runner_name: str
+            Name of the runner used to build output column names.
+        kind: str
+            Measurement kind suffix (for example, ``data`` or ``model``).
+        """
+        try:
+            res_ = runner.go(obs)
+            self._add_result(i, res_, runner_name, kind=kind)
+        except GMixRangeError:
+            for name, dtype in get_runner_output_dtype(runner_name, [kind], do_hom=self._do_hom):
+                if dtype is np.float64:
+                    self.output_cat[name][i] = np.nan
+                else:
+                    self.output_cat[name][i] |= ngmix.flags.GMIX_RANGE_ERROR
+
     def _add_result(self, i, res_, runner_name, kind="data"):
         """
         Store one runner result into the output catalog.
@@ -253,6 +291,8 @@ class NgmixCatalog(Stats):
         """
         if res_["flags"] != 0:
             self.output_cat[f"{runner_name}_flags_{kind}"][i] = res_["flags"]
+            if self._do_hom:
+                self.output_cat[f"{runner_name}_hom_flags_{kind}"][i] = res_["flags"]
             return
         if runner_name in ["wmom", "am"]:
             g1, g2 = e1e2_to_g1g2(res_["e1"], res_["e2"])
@@ -263,7 +303,15 @@ class NgmixCatalog(Stats):
         self.output_cat[f"{runner_name}_T_{kind}"][i] = res_["T"]
         self.output_cat[f"{runner_name}_flux_{kind}"][i] = res_["flux"]
         self.output_cat[f"{runner_name}_snr_{kind}"][i] = res_["s2n"]
-        if self._do_hom and runner_name in VALID_HOM_RUNNERS:
+        if not self._do_hom:
+            return
+        if runner_name not in VALID_HOM_RUNNERS:
+            self.output_cat[f"{runner_name}_hom_flags_{kind}"][i] = ngmix.flags.NO_ATTEMPT
+            return
+        # wmom measures the moments in the main fit, so it has no hom_flags.
+        hom_flags = res_.get("hom_flags", 0)
+        self.output_cat[f"{runner_name}_hom_flags_{kind}"][i] = hom_flags
+        if hom_flags == 0:
             hom_res = parse_hom_momoents(res_)
             self.output_cat[f"{runner_name}_g41_{kind}"][i] = hom_res["g41"]
             self.output_cat[f"{runner_name}_g42_{kind}"][i] = hom_res["g42"]

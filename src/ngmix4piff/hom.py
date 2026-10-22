@@ -1,5 +1,7 @@
+import ngmix
 from ngmix.admom.admom import AdmomFitter
 from ngmix.fitting import Fitter
+from ngmix.gexceptions import GMixRangeError
 
 
 def parse_hom_momoents(res):
@@ -31,6 +33,67 @@ def parse_hom_momoents(res):
     hom_res["h41"] = res["M40"] / res["M11"] ** 2
     hom_res["h42"] = res["M14"] / res["M11"] ** 2
     return hom_res
+
+
+def check_gmix(result):
+    """
+    Check that a successful fit yields a valid gmix.
+
+    ngmix does not check that a converged fit has |e| < 1, so building the
+    gmix can raise a ``GMixRangeError``. In that case the fit is flagged with
+    ``ngmix.flags.GMIX_RANGE_ERROR`` instead of raising, which also lets the
+    runner retry with a new guess.
+
+    Parameters
+    ----------
+    result: dict
+        Fit result with ``result["flags"] == 0``. Must provide ``get_gmix``.
+
+    Returns
+    -------
+    gmix: GMix or None
+        The gmix of the fit, or None if it is invalid, in which case
+        ``result["flags"]`` is updated in place.
+    """
+    try:
+        return result.get_gmix()
+    except GMixRangeError:
+        result["flags"] |= ngmix.flags.GMIX_RANGE_ERROR
+        return None
+
+
+def add_hom_results(result, gmix, obs):
+    """
+    Add higher order moments measured with the fit gmix as the weight.
+
+    Parameters
+    ----------
+    result: dict
+        Successful fit result.
+    gmix: GMix
+        Valid gmix of the fit, e.g., from ``check_gmix``.
+    obs: Observation
+        ngmix.Observation that was fit.
+
+    Returns
+    -------
+    result: dict
+        The fit result, including the higher order moments, with their own
+        flags stored in ``hom_flags``.
+    """
+    try:
+        hom_results = gmix.get_weighted_moments(
+            obs=obs,
+            with_higher_order=True,
+        )
+    except GMixRangeError:
+        result["hom_flags"] = ngmix.flags.GMIX_RANGE_ERROR
+        return result
+    # Keep the moments flags before the fit result overwrites them.
+    hom_flags = hom_results["flags"]
+    hom_results.update(result)
+    hom_results["hom_flags"] = hom_flags
+    return hom_results
 
 
 class AdmomFitterHOM(AdmomFitter):
@@ -87,14 +150,10 @@ class AdmomFitterHOM(AdmomFitter):
             gaussian are generated.
         """
         result = super().go(obs=obs, guess=guess)
-        if self.with_higher_order and result["flags"] == 0:
-            gmix = result.get_gmix()
-            hom_results = gmix.get_weighted_moments(
-                obs=obs,
-                with_higher_order=self.with_higher_order,
-            )
-            hom_results.update(result)
-            result = hom_results
+        if result["flags"] == 0:
+            gmix = check_gmix(result)
+            if gmix is not None and self.with_higher_order:
+                result = add_hom_results(result, gmix, obs)
         return result
 
 
@@ -145,12 +204,8 @@ class FitterHOM(Fitter):
         """
 
         result = super().go(obs=obs, guess=guess)
-        if self.with_higher_order and result["flags"] == 0:
-            gmix = result.get_gmix()
-            hom_results = gmix.get_weighted_moments(
-                obs=obs,
-                with_higher_order=self.with_higher_order,
-            )
-            hom_results.update(result)
-            result = hom_results
+        if result["flags"] == 0:
+            gmix = check_gmix(result)
+            if gmix is not None and self.with_higher_order:
+                result = add_hom_results(result, gmix, obs)
         return result

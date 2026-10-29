@@ -1,6 +1,9 @@
 
 # ngmix4piff
 
+**This feature is now implemented in Piff, this repo is no longer maintained**
+
+
 This is a simple pluggin for Piff to add support of Ngmix to measure shape on
 the output PSF model and stars (similar to the HSMCatalog)
 
